@@ -7,7 +7,7 @@ A lightweight Roblox (Luau) framework providing the **Service** (server) and **C
 - **Lifecycle Hooks**: `InitInit` → `InitStart` → `InitDestroy` for both services and controllers
 - **Player Lifecycle Hooks** (server): `OnPlayerAdded` / `OnPlayerRemoving` for handling player connections and unexpected disconnections
 - **Dependency Ordering**: Topological sort ensures services/controllers initialize in the correct order
-- **Graceful Shutdown**: `InitDestroy` runs on both server and client via `game:BindToClose`
+- **Graceful Shutdown**: `InitDestroy` runs on server via `game:BindToClose` and on client via `Players.PlayerRemoving`
 - **Configurable Logging**: Log levels (NONE, ERROR, WARN, INFO, DEBUG) via `SetConfig`
 - **Middleware System**: Register middleware functions that run before each lifecycle phase
 - **StrictMode**: Configurable error handling for `GetService`/`GetController`
@@ -68,7 +68,7 @@ function MyController:InitStart()
 end
 
 function MyController:InitDestroy()
-    -- Called during client shutdown/disconnection (game:BindToClose)
+    -- Called during client shutdown/disconnection (Players.PlayerRemoving)
     -- Use this to clean up resources on disconnection
 end
 
@@ -102,6 +102,6 @@ The framework provides built-in support for handling player disconnections:
 
 1. **Server-side**: Define `OnPlayerRemoving(player)` on any service to handle when a player disconnects (whether gracefully or unexpectedly). The framework automatically binds to `Players.PlayerRemoving` and calls this hook on all services that define it, with full error handling via `pcall`.
 
-2. **Client-side**: Define `InitDestroy()` on any controller to handle cleanup when the client shuts down or disconnects. The framework binds to `game:BindToClose` to trigger this cleanup.
+2. **Client-side**: Define `InitDestroy()` on any controller to handle cleanup when the client shuts down or disconnects. The framework listens for `Players.PlayerRemoving` to trigger this cleanup when the local player leaves.
 
 3. **Graceful Shutdown**: On server shutdown, the framework first disconnects player lifecycle connections, then runs `InitDestroy` on all services with a 25-second timeout per service.
