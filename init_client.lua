@@ -1,11 +1,12 @@
 --[=[
 	@class InitClient
 	Client-side framework module providing the Controller pattern with lifecycle hooks
-	(`InitInit` → `InitStart`).
+	(`InitInit` → `InitStart` → `InitDestroy`).
 
 	Features:
 	- Configurable logging system with log levels
 	- Dependency ordering via topological sort
+	- Graceful shutdown via `InitDestroy` lifecycle hook for handling disconnections
 	- Middleware system for lifecycle phases
 	- StrictMode for GetController error handling
 	- Error handling parity with server (pcall, timeout, allSettled)
@@ -180,7 +181,7 @@ end
 	@within InitClient
 	@param fn MiddlewareFn -- Middleware function `(item, phase) -> ()`
 	Registers a middleware function. Must be called before `Start()`.
-	Middlewares are called before each lifecycle phase (`InitInit`, `InitStart`).
+	Middlewares are called before each lifecycle phase (`InitInit`, `InitStart`, `InitDestroy`).
 ]=]
 function InitClient.AddMiddleware(fn: MiddlewareFn)
 	assert(not started, `Middlewares cannot be added after calling "Init.Start()"`)
@@ -303,7 +304,7 @@ end
 	@within InitClient
 	@return Promise
 	Starts the framework. Runs `InitInit` on all controllers in dependency order,
-	then spawns `InitStart` for each.
+	then spawns `InitStart` for each. Binds graceful shutdown via `game:BindToClose`.
 ]=]
 function InitClient.Start()
 	if started then
@@ -382,6 +383,43 @@ function InitClient.Start()
 		end)
 
 		log(LOG_LEVEL.INFO, "Init started successfully")
+
+		-- Bind graceful shutdown for handling disconnection/cleanup
+		game:BindToClose(function()
+			log(LOG_LEVEL.INFO, "Client shutdown initiated. Running InitDestroy on all controllers...")
+
+			local destroyPromises = {}
+
+			for _, controller in sortedControllers do
+				if type(controller.InitDestroy) == "function" then
+					table.insert(
+						destroyPromises,
+						Promise.new(function(r)
+							debug.setmemorycategory(controller.Name)
+							log(LOG_LEVEL.INFO, `Destroying "{controller.Name}"...`)
+
+							runMiddlewares(controller, "InitDestroy")
+
+							local success, err = pcall(function()
+								controller:InitDestroy()
+							end)
+
+							if success then
+								log(LOG_LEVEL.DEBUG, `"{controller.Name}" destroyed successfully`)
+							else
+								log(LOG_LEVEL.ERROR, `Controller "{controller.Name}":InitDestroy() failed: {err}`)
+							end
+
+							r()
+						end):timeout(25, `Controller "{controller.Name}":InitDestroy() timed out`)
+					)
+				end
+			end
+
+			Promise.allSettled(destroyPromises):await()
+
+			log(LOG_LEVEL.INFO, "Client shutdown complete")
+		end)
 	end)
 end
 
