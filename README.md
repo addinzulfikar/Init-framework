@@ -11,6 +11,7 @@ A lightweight Roblox (Luau) framework providing the **Service** (server) and **C
 - **Configurable Logging**: Log levels (NONE, ERROR, WARN, INFO, DEBUG) via `SetConfig`
 - **Middleware System**: Register middleware functions that run before each lifecycle phase
 - **StrictMode**: Configurable error handling for `GetService`/`GetController`
+- **ByteNet Integration**: Built-in support for [ByteNet / ByteNetMax](https://github.com/ffrostfall/ByteNet) networking — access via `Init.ByteNet` or convenience wrappers
 
 ## Usage
 
@@ -95,6 +96,131 @@ end)
 ```
 
 Middleware phases: `InitInit`, `InitStart`, `InitDestroy`, `OnPlayerAdded`, `OnPlayerRemoving`
+
+### ByteNet Integration
+
+Init includes built-in support for [ByteNet / ByteNetMax](https://github.com/ffrostfall/ByteNet) networking. Place a `ByteNet` or `ByteNetMax` ModuleScript in your **Packages** folder (the same folder that contains `Promise`), and Init will automatically detect and expose it.
+
+#### Accessing ByteNet through Init
+
+```lua
+local Init = require(path.to.Init)
+local ByteNet = Init.ByteNet -- full ByteNet module reference (nil if not installed)
+```
+
+#### Convenience Wrappers
+
+Init exposes wrapper methods so you can define namespaces, packets, and queries directly through Init:
+
+```lua
+local Init = require(path.to.Init)
+
+-- These are equivalent to ByteNet.defineNamespace / definePacket / defineQuery
+local MyNamespace = Init.DefineNamespace("MyNamespace", function()
+    return {
+        packets = {
+            MyPacket = Init.DefinePacket({
+                value = Init.ByteNet.struct({
+                    message = Init.ByteNet.string,
+                })
+            }),
+        },
+        queries = {
+            GetData = Init.DefineQuery({
+                request = Init.ByteNet.struct({}),
+                response = Init.ByteNet.struct({
+                    coins = Init.ByteNet.uint32,
+                })
+            }),
+        },
+    }
+end)
+```
+
+#### Full Example (ByteNetPackets module)
+
+You can create a shared `ByteNetPackets` ModuleScript that defines all your networking:
+
+```lua
+-- ReplicatedStorage/Packages/ByteNetPackets.lua
+local Init = require(path.to.Init)
+local ByteNet = Init.ByteNet
+
+local module = {}
+
+module.DailyLogin = Init.DefineNamespace("DailyLogin", function()
+    return {
+        packets = {},
+        queries = {
+            GetDailyLoginData = ByteNet.defineQuery({
+                request = ByteNet.struct({}),
+                response = ByteNet.struct({
+                    CurrentDay = ByteNet.uint8,
+                    ConsecutiveDays = ByteNet.uint8,
+                    ClaimedToday = ByteNet.bool,
+                    CanClaim = ByteNet.bool,
+                    RewardsJSON = ByteNet.string,
+                })
+            }),
+        }
+    }
+end)
+
+module.Combat = Init.DefineNamespace("Combat", function()
+    return {
+        packets = {
+            RequestAttack = ByteNet.definePacket({
+                value = ByteNet.struct({
+                    IsNPC = ByteNet.bool,
+                    TargetUserId = ByteNet.uint32,
+                    TargetName = ByteNet.string,
+                    ClientRange = ByteNet.int32,
+                })
+            }),
+        },
+        queries = {
+            GetCombatStats = ByteNet.defineQuery({
+                request = ByteNet.struct({}),
+                response = ByteNet.struct({
+                    Damage = ByteNet.uint16,
+                    CritChance = ByteNet.uint8,
+                    CritMultiplier = ByteNet.uint8,
+                    AttackSpeed = ByteNet.uint8,
+                })
+            }),
+        }
+    }
+end)
+
+return module
+```
+
+#### Server-side usage (listening for queries)
+
+```lua
+local ByteNetPackets = require(path.to.ByteNetPackets)
+
+ByteNetPackets.DailyLogin.queries.GetDailyLoginData.listen(function(data, player)
+    return {
+        CurrentDay = 1,
+        ConsecutiveDays = 5,
+        ClaimedToday = false,
+        CanClaim = true,
+        RewardsJSON = "{}",
+    }
+end)
+```
+
+#### Client-side usage (invoking queries)
+
+```lua
+local ByteNetPackets = require(path.to.ByteNetPackets)
+
+local loginData = ByteNetPackets.DailyLogin.queries.GetDailyLoginData.invoke({})
+print(loginData.CurrentDay)
+```
+
+> **Note:** ByteNet is optional. If no `ByteNet` or `ByteNetMax` module is found in the Packages folder, `Init.ByteNet` will be `nil` and the convenience wrappers (`DefineNamespace`, `DefinePacket`, `DefineQuery`) will error when called.
 
 ## Handling Unexpected Disconnections
 
