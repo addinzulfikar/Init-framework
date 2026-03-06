@@ -6,7 +6,7 @@
 	Features:
 	- Configurable logging system with log levels
 	- Dependency ordering via topological sort
-	- Graceful shutdown via `InitDestroy` lifecycle hook for handling disconnections
+	- Graceful shutdown via `InitDestroy` lifecycle hook triggered on player removal
 	- Middleware system for lifecycle phases
 	- StrictMode for GetController error handling
 	- Error handling parity with server (pcall, timeout, allSettled)
@@ -304,7 +304,7 @@ end
 	@within InitClient
 	@return Promise
 	Starts the framework. Runs `InitInit` on all controllers in dependency order,
-	then spawns `InitStart` for each. Binds graceful shutdown via `game:BindToClose`.
+	then spawns `InitStart` for each. Binds graceful shutdown via `Players.PlayerRemoving`.
 ]=]
 function InitClient.Start()
 	if started then
@@ -385,7 +385,12 @@ function InitClient.Start()
 		log(LOG_LEVEL.INFO, "Init started successfully")
 
 		-- Bind graceful shutdown for handling disconnection/cleanup
-		game:BindToClose(function()
+		local Players = game:GetService("Players")
+		Players.PlayerRemoving:Connect(function(player)
+			if player ~= InitClient.Player then
+				return
+			end
+
 			log(LOG_LEVEL.INFO, "Client shutdown initiated. Running InitDestroy on all controllers...")
 
 			local destroyPromises = {}
