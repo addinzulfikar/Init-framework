@@ -7,6 +7,7 @@
 	- Configurable logging system with log levels
 	- Dependency ordering via topological sort
 	- Graceful shutdown via `InitDestroy` lifecycle hook
+	- Player lifecycle hooks (`OnPlayerAdded` / `OnPlayerRemoving`) for handling unexpected disconnections
 	- Middleware system for lifecycle phases
 	- StrictMode for GetService error handling
 ]=]
@@ -66,6 +67,7 @@ local InitServer = {}
 ]=]
 InitServer.Util = (script.Parent :: Instance).Parent
 
+local Players = game:GetService("Players")
 local Promise = require(InitServer.Util.Promise)
 
 local services: { [string]: Service } = {}
@@ -74,6 +76,8 @@ local startedComplete = false
 local onStartedComplete = Instance.new("BindableEvent")
 
 local middlewares: { MiddlewareFn } = {}
+
+local playerConnections: { RBXScriptConnection } = {}
 
 local config: Config = {
 	LogLevel = LOG_LEVEL.WARN,
@@ -172,7 +176,7 @@ end
 	@within InitServer
 	@param fn MiddlewareFn -- Middleware function `(item, phase) -> ()`
 	Registers a middleware function. Must be called before `Start()`.
-	Middlewares are called before each lifecycle phase (`InitInit`, `InitStart`, `InitDestroy`).
+	Middlewares are called before each lifecycle phase (`InitInit`, `InitStart`, `InitDestroy`, `OnPlayerAdded`, `OnPlayerRemoving`).
 ]=]
 function InitServer.AddMiddleware(fn: MiddlewareFn)
 	assert(not started, `Middlewares cannot be added after calling "Init.Start()"`)
@@ -375,9 +379,68 @@ function InitServer.Start()
 
 		log(LOG_LEVEL.INFO, "Init started successfully")
 
+		-- Bind player lifecycle hooks for handling connections/disconnections
+		local function onPlayerAdded(player: Player)
+			for _, service in sortedServices do
+				if type(service.OnPlayerAdded) == "function" then
+					task.spawn(function()
+						debug.setmemorycategory(service.Name)
+						log(LOG_LEVEL.DEBUG, `Running OnPlayerAdded for "{service.Name}" (player: {player.Name})`)
+
+						runMiddlewares(service, "OnPlayerAdded")
+
+						local success, err = pcall(function()
+							service:OnPlayerAdded(player)
+						end)
+						if not success then
+							log(LOG_LEVEL.ERROR, `Service "{service.Name}":OnPlayerAdded() failed for player "{player.Name}": {err}`)
+						end
+					end)
+				end
+			end
+		end
+
+		local function onPlayerRemoving(player: Player)
+			for _, service in sortedServices do
+				if type(service.OnPlayerRemoving) == "function" then
+					task.spawn(function()
+						debug.setmemorycategory(service.Name)
+						log(LOG_LEVEL.DEBUG, `Running OnPlayerRemoving for "{service.Name}" (player: {player.Name})`)
+
+						runMiddlewares(service, "OnPlayerRemoving")
+
+						local success, err = pcall(function()
+							service:OnPlayerRemoving(player)
+						end)
+						if not success then
+							log(LOG_LEVEL.ERROR, `Service "{service.Name}":OnPlayerRemoving() failed for player "{player.Name}": {err}`)
+						end
+					end)
+				end
+			end
+		end
+
+		table.insert(playerConnections, Players.PlayerAdded:Connect(onPlayerAdded))
+		table.insert(playerConnections, Players.PlayerRemoving:Connect(onPlayerRemoving))
+
+		-- Handle players that joined before the framework started
+		for _, player in Players:GetPlayers() do
+			onPlayerAdded(player)
+		end
+
+		log(LOG_LEVEL.INFO, "Player lifecycle hooks bound")
+
 		-- Bind graceful shutdown
 		game:BindToClose(function()
-			log(LOG_LEVEL.INFO, "Shutdown initiated. Running InitDestroy on all services...")
+			log(LOG_LEVEL.INFO, "Shutdown initiated. Cleaning up player connections...")
+
+			-- Disconnect player lifecycle connections
+			for _, connection in playerConnections do
+				connection:Disconnect()
+			end
+			table.clear(playerConnections)
+
+			log(LOG_LEVEL.INFO, "Running InitDestroy on all services...")
 
 			local destroyPromises = {}
 
