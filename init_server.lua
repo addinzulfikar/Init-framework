@@ -70,6 +70,37 @@ InitServer.Util = (script.Parent :: Instance).Parent
 local Players = game:GetService("Players")
 local Promise = require(InitServer.Util.Promise)
 
+-- ByteNet integration: safely try to require ByteNet or ByteNetMax from the Packages folder
+local ByteNet = nil
+do
+	local utilFolder = InitServer.Util
+	local byteNetModule = utilFolder:FindFirstChild("ByteNet") or utilFolder:FindFirstChild("ByteNetMax")
+	if byteNetModule then
+		local success, result = pcall(require, byteNetModule)
+		if success then
+			ByteNet = result
+		else
+			warn("[Init][WARN] ByteNet module found but failed to load: " .. tostring(result))
+		end
+	end
+end
+
+--[=[
+	@prop ByteNet table?
+	@within InitServer
+	Reference to the ByteNet (or ByteNetMax) networking library, if installed.
+	Place a `ByteNet` or `ByteNetMax` ModuleScript in your Packages folder
+	(the same folder that contains `Promise`) to enable networking support.
+
+	Returns `nil` if ByteNet is not installed.
+
+	```lua
+	local Init = require(path.to.Init)
+	local ByteNet = Init.ByteNet -- access ByteNet through Init
+	```
+]=]
+InitServer.ByteNet = ByteNet
+
 local services: { [string]: Service } = {}
 local started = false
 local startedComplete = false
@@ -292,6 +323,43 @@ function InitServer.GetServices(): { [string]: Service }
 	assert(started, "Cannot call GetServices until Init has been started")
 
 	return services
+end
+
+--[=[
+	@function DefineNamespace
+	@within InitServer
+	@param name string -- Namespace identifier
+	@param builder function -- Builder function returning packets/queries definition
+	@return table -- ByteNet namespace
+	Convenience wrapper for `ByteNet.defineNamespace()`. Requires ByteNet to be installed.
+]=]
+function InitServer.DefineNamespace(name: string, builder: () -> any): any
+	assert(ByteNet, "ByteNet is not installed. Place a ByteNet or ByteNetMax ModuleScript in your Packages folder.")
+	return ByteNet.defineNamespace(name, builder)
+end
+
+--[=[
+	@function DefinePacket
+	@within InitServer
+	@param definition table -- Packet definition with `value` field
+	@return table -- ByteNet packet
+	Convenience wrapper for `ByteNet.definePacket()`. Requires ByteNet to be installed.
+]=]
+function InitServer.DefinePacket(definition: any): any
+	assert(ByteNet, "ByteNet is not installed. Place a ByteNet or ByteNetMax ModuleScript in your Packages folder.")
+	return ByteNet.definePacket(definition)
+end
+
+--[=[
+	@function DefineQuery
+	@within InitServer
+	@param definition table -- Query definition with `request` and `response` fields
+	@return table -- ByteNet query
+	Convenience wrapper for `ByteNet.defineQuery()`. Requires ByteNet to be installed.
+]=]
+function InitServer.DefineQuery(definition: any): any
+	assert(ByteNet, "ByteNet is not installed. Place a ByteNet or ByteNetMax ModuleScript in your Packages folder.")
+	return ByteNet.defineQuery(definition)
 end
 
 --[=[
