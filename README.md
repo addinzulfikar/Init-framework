@@ -11,7 +11,7 @@ A lightweight Roblox (Luau) framework providing the **Service** (server) and **C
 - **Configurable Logging**: Log levels (NONE, ERROR, WARN, INFO, DEBUG) via `SetConfig`
 - **Middleware System**: Register middleware functions that run before each lifecycle phase
 - **StrictMode**: Configurable error handling for `GetService`/`GetController`
-- **ByteNet Integration**: Built-in support for [ByteNet / ByteNetMax](https://github.com/) networking — access via `Init.ByteNet` or convenience wrappers
+- **ByteNet Integration**: Built-in support for [ByteNet / ByteNetMax](https://github.com/ffrostfall/ByteNet) networking — access via `Init.ByteNet` or convenience wrappers
 
 ## Usage
 
@@ -99,7 +99,7 @@ Middleware phases: `InitInit`, `InitStart`, `InitDestroy`, `OnPlayerAdded`, `OnP
 
 ### ByteNet Integration
 
-Init includes built-in support for [ByteNet / ByteNetMax](https://github.com/) networking. Place a `ByteNet` or `ByteNetMax` ModuleScript in your **Packages** folder (the same folder that contains `Promise`), and Init will automatically detect and expose it.
+Init includes built-in support for [ByteNet / ByteNetMax](https://github.com/ffrostfall/ByteNet) networking. Place a `ByteNet` or `ByteNetMax` ModuleScript in your **Packages** folder (the same folder that contains `Promise`), and Init will automatically detect and expose it.
 
 #### Accessing ByteNet through Init
 
